@@ -15,7 +15,10 @@ load_dotenv()
 # Database Access Layer
 # ======================
 class Database:
-    def __init__(self, uri="bolt://localhost:7687", user="neo4j", password="MY_PASS"):
+    def __init__(self, uri="neo4j+s://4fdb23e4.databases.neo4j.io",
+                 user="neo4j",
+                 password="NNH_KuI9qoT10xTfKw3VSQRv4_DPG-7bImKMUcmdoK8"):
+        
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self._init_db()
     
@@ -38,24 +41,38 @@ class Database:
      ##   return sqlite3.connect(self.db_name)
     
     # User operations
-    def create_user(self, username: str, name: str) -> int:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('INSERT INTO users (username, name) VALUES (?, ?)', (username, name))
-            return cursor.lastrowid
+    def create_user(self, username: str, name: str) -> str:
+        with self.driver.session() as session:
+            result = session.run(
+                "CREATE (u:User {id: randomUUID(), username: $username, name: $name}) "
+                "RETURN u.id AS id",
+                username=username,
+                name=name
+            )
+            return result.single()["id"]
+
+
     
-    def get_user(self, user_id: int) -> Optional[dict]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, username, name FROM users WHERE id = ?', (user_id,))
-            row = cursor.fetchone()
-            return {'id': row[0], 'username': row[1], 'name': row[2]} if row else None
+    def get_user(self, user_id: str) -> Optional[dict]:
+        with self.driver.session() as session:
+            result = session.run(
+                "MATCH (u:User {id: $user_id}) "
+                "RETURN u.id AS id, u.username AS username, u.name AS name",
+                user_id=user_id
+            )
+            record = result.single()
+            return dict(record) if record else None
+
     
     def get_all_users(self) -> List[dict]:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT id, username, name FROM users')
-            return [{'id': row[0], 'username': row[1], 'name': row[2]} for row in cursor.fetchall()]
+        with self.driver.session() as session:
+            result = session.run(
+                "MATCH (u:User) "
+                "RETURN u.id AS id, u.username AS username, u.name AS name "
+                "ORDER BY u.name"
+            )
+            return [dict(record) for record in result]
+        
     
     # Post operations
     def create_post(self, user_id: int, content: str) -> int:
@@ -294,3 +311,10 @@ app.jinja_env.globals.update(
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+
+if __name__ == "__main__":
+    db = Database()
+    print("Neo4j connection successful!")
+    db.close()
